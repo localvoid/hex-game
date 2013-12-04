@@ -16,7 +16,7 @@ template<int Size>
 using PlayerState = std::array<uint16_t, Size>;
 
 template<int Size>
-bool _isEndGame(const PlayerState<Size>& player_state, uint32_t player) noexcept {
+bool __attribute__((noinline)) _isEndGame(const PlayerState<Size>& player_state, uint32_t player) noexcept {
   enum State {
     LinkDown,
     LinkUp,
@@ -72,25 +72,28 @@ bool _isEndGame(const PlayerState<Size>& player_state, uint32_t player) noexcept
     }
     case State::Capture: {
       uint32_t capture = 0;
-
-      for (uint32_t col_num = __builtin_ctz(connections);
-           connections;
-           col_num = __builtin_ctz(connections)) {
-
-        uint32_t xrow = ~row;
-        uint32_t rrow = (xrow >> col_num) | (xrow << (32 - col_num)); // ror
-        uint32_t left_bits_count = __builtin_ctz(rrow);
-        uint32_t right_bits_count = __builtin_clz(rrow) + 1;
-        uint32_t left_bits_mask = (1 << left_bits_count) - 1;
-        uint32_t right_bits_mask = (1 << (right_bits_count - 1)) - 1;
-        capture |= left_bits_mask << col_num;
-        capture |= (right_bits_mask << (col_num - right_bits_count + 1));
-
-        connections ^= left_bits_mask << col_num;
-      }
+      capture = connections;
 
       board[row_num] ^= capture;
       shadow_board[row_num] |= capture;
+
+      // capture right bits
+      do {
+        capture >>= 1;
+        capture &= board[row_num];
+        board[row_num] ^= capture;
+        shadow_board[row_num] |= capture;
+      } while(capture);
+
+      // capture left bits
+      capture = connections;
+      do {
+        capture <<= 1;
+        capture &= board[row_num];
+        board[row_num] ^= capture;
+        shadow_board[row_num] |= capture;
+      } while(capture);
+
       shadow_row = shadow_board[row_num];
 
       if (board[row_num-1]) {
@@ -555,7 +558,7 @@ public:
   void run() {
     while (_state != State::Shutdown) {
       // clear screen
-      std::cout << "\x1B[2J\x1B[H";
+      //std::cout << "\x1B[2J\x1B[H";
 
       switch (_state) {
       case State::Menu: {
